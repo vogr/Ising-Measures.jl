@@ -19,6 +19,7 @@ const directions = CartesianIndex.([(0,1), (0,-1), (1,0), (-1,0)])
 
 const SEED = 0x5e6c1f2e
 
+const n_temperatures = 100
 const eq_steps = 5 * 10^3
 const mc_steps = 10^4
 const plot_every = 10^3
@@ -31,7 +32,7 @@ function main()
   info(logger, "Seed: $SEED")
   prng = MersenneTwister(SEED)
 
-  const tT = linspace(0.1, 6, 100)
+  const tT = linspace(0.1, 6, n_temperatures)
   const outdir = "simulations/kawasaki_$(SEED)_$(N)"
   mkpath(outdir)
 
@@ -63,68 +64,50 @@ function main()
     qsize = 10
     durations = Queue(Int)
 
-    function timed_sweep()
-      h1 = now()
-      for _ in 1:plot_every
-        mcmove(model, β, prng)
-        t = t + 1
-      end
-      h2 = now()
-      d = h2 - h1
-      enqueue!(durations, Dates.value(d))
-      if length(durations) > qsize
-        dequeue!(durations)
-      end
-    end
+    p = make_heatmap(model.ω)
+    plot!(p, title="T=$T, t=$t (eq.)")
+    savefig(p, "$subdir/image$(dec(t, 9)).svg")
 
-    # Reach a first equilibrium
-    info(logger, "Reaching a first equilibrium...")
-    for i in 1:eq_steps
-      timed_sweep()
+    # Reach a first equilibrium with eq_steps step then compute energy
+    # on the next mc_steps configurations.
+    h1 = now()
+    for i in 1:(eq_steps + mc_steps)
+      mcmove(model, β, prng)
+      t = t + 1
+
+      if i > eq_steps
+        E = H(model.ω)
+        totE = totE + E
+        totE2 = totE2 + E*E
+      end
+
       if i % plot_every == 0
+        h2 = now()
+        d = h2 - h1
+        enqueue!(durations, Dates.value(d))
+        if length(durations) > qsize
+          dequeue!(durations)
+        end
+
         hplot = now()
         p = make_heatmap(model.ω)
-        plot!(p, title="T=$T, t=$t (eq.)")
+        if i > eq_steps
+          plot!(p, title="T=$T, t=$t, E=$E")
+        else
+          plot!(p, title="T=$T, t=$t (eq.)")
+        end
         savefig(p, "$subdir/image$(dec(t, 9)).svg")
         dplot = now() - hplot
 
         total_time = Dates.canonicalize(Dates.CompoundPeriod(now() - h0))
-        it_per_s = durations_to_itps(durations)
+        sw_per_s = durations_to_swps(durations)
         message = """
         ($total_time) T=$(T) ; t=$(t)
-        \t$plot_every iterations in $(front(durations)). On average (last $qsize): $it_per_s it/s.
+        \t$plot_every sweeps in $d. On average (last $qsize): $sw_per_s sweeps/s.
         \t+$dplot to plot.
         """
         info(logger, message)
-      end
-    end
-
-    # MC moves between measures
-    for i in 1:mc_steps
-      timed_sweep()
-
-      henergy = now()
-      E = H(model.ω)
-      totE = totE + E
-      totE2 = totE2 + E*E
-      denergy = now() - henergy
-
-      if i % plot_every == 0
-        hplot = now()
-        p = make_heatmap(model.ω)
-        plot!(p, title="T=$T, t=$t, E=$E")
-        savefig(p, "$subdir/image$(dec(t, 9)).svg")
-        dplot = now() - hplot
-
-        total_time = Dates.canonicalize(Dates.CompoundPeriod(now() - h0))
-        it_per_s = durations_to_itps(durations)
-        message = """
-        ($total_time) T=$(T) ; t=$(t)
-        \t$plot_every iterations in $(front(durations)). On average (last $qsize): $it_per_s it/s.
-        \t+$dplot to plot.
-        \t+$denergy to compute energy.
-        """
-        info(logger, message)
+        h1 = now()
       end
     end
 
@@ -148,10 +131,10 @@ function main()
   savefig(p, "$outdir/mesures$N.svg") 
 end
 
-function durations_to_itps(durations)
-  it_per_ms = (plot_every * length(durations)) / sum(durations)
-  it_per_s = round(it_per_ms * 1000, 4)
-	it_per_s
+function durations_to_swps(durations)
+  sw_per_ms = (plot_every * length(durations)) / sum(durations)
+  sw_per_s = round(sw_per_ms * 1000, 4)
+	sw_per_s
 end
 
 function H(ω)
