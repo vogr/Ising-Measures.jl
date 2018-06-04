@@ -12,16 +12,16 @@ const J = 1 # Neighbor interraction
 const k = 1 # Boltzmann's constant
 const dynamic = "local"
 const ρ = 0.4 # spins down ratio
-const N = 20 # Lattice size
+const N = 50 # Lattice size
 const N2 = N^2
 const directions = CartesianIndex.([(0,1), (0,-1), (1,0), (-1,0)])
 
 
 const SEED = 0x5e6c1f2e
 
-const eq_steps = 100
-const mc_steps = 900
-const plot_every = 10
+const eq_steps = 5 * 10^3
+const mc_steps = 10^4
+const plot_every = 10^3
 
 function main()
   logger = Memento.config("debug"; fmt="[{level} | {name}]: {msg}")
@@ -31,7 +31,7 @@ function main()
   info(logger, "Seed: $SEED")
   prng = MersenneTwister(SEED)
 
-  const tT = linspace(0.1, 6, 20)
+  const tT = linspace(0.1, 6, 100)
   const outdir = "simulations/kawasaki_$(SEED)_$(N)"
   mkpath(outdir)
 
@@ -49,7 +49,8 @@ function main()
   tE2 = similar(tT)
   tc = similar(tT)
 
-  @showprogress 1 "Computing..." for (i_T,T) in enumerate(tT)
+  h0 = now()
+  for (i_T,T) in enumerate(tT)
     info(logger, "Starting T=$T")
     subdir = "$outdir/$T"
     mkpath(subdir)
@@ -76,7 +77,6 @@ function main()
       end
     end
 
-		h0 = now()
     # Reach a first equilibrium
     info(logger, "Reaching a first equilibrium...")
     for i in 1:eq_steps
@@ -135,12 +135,13 @@ function main()
     tc[i_T] = k * β^2 * (mE2 - mE^2) / N2
   end
 
-  l = @layout [grid(1,2)]
+  l = @layout [a b]
   pE = plot(tT, tE)
   plot!(pE; xlabel="T", ylabel="E")
   plot!(pE; legend=false)
 
-  pc = plot(tT, tc; xlabel="T", ylabel = "c")
+  pc = plot(tT, tc)
+  plot!(pc; xlabel="T", ylabel = "c")
   plot!(pc; legend=true)
 
   p = plot(pE,pc,layout=l)
