@@ -185,7 +185,6 @@ end
 
 function init_model(prng; is_local=true)
   mutable_sites_coordinates = [CartesianIndex(i,j) for i in 3:(N-2) for j in 3:(N-2)]
-  #mutable_sites_coordinates = CartesianRange(CartesianIndex(3,3), CartesianIndex(N-2),(N-2))
   distrib = shuffle(prng, mutable_sites_coordinates)
   ω = ones(Int, (N, N))
   nb_spins_down = convert(Int, round(length(mutable_sites_coordinates) * ρ))
