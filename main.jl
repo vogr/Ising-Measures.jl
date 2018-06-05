@@ -24,6 +24,9 @@ const eq_steps = 5 * 10^3
 const mc_steps = 10^4
 const plot_every = 10^3
 
+const heat_bath_time = 10^5
+const heat_bath_temp = 1.2
+
 function main()
   logger = Memento.config("debug"; fmt="[{level} | {name}]: {msg}")
 
@@ -45,6 +48,18 @@ function main()
   savefig(p0, "$outdir/image0.svg")
   dfirstplot = now() - t0
   info(logger, "Time for first plot: $dfirstplot")
+
+
+  #First heat bath
+  info(logger, "Beginning heat bath")
+  hbath = now()
+  β_hb = 1 / (k * heat_bath_temp)
+  for i in 1:heat_bath_time
+    mcmove(model, β_hb, prng)
+  end
+  dbath = now() - hbath
+  info(logger, "Heat bath done in $dbath ($heat_bath_time sweeps at T=$heat_bath_temp")
+
 
   tE = similar(tT)
   tE2 = similar(tT)
