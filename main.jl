@@ -10,7 +10,7 @@ dmodules = now() - tmod
 
 const J = 1 # Neighbor interraction
 const k = 1 # Boltzmann's constant
-const dynamic = "local"
+const dynamic = "k_local"  # in ["k_local", "k_nonlocal", "metropolis"]
 const ρ = 0.4 # spins down ratio
 const N = 50 # Lattice size
 const N2 = N^2
@@ -25,7 +25,7 @@ const mc_steps = 10^4
 const plot_every = 10^3
 
 const heat_bath_time = 10^5
-const heat_bath_temp = 1.2
+const heat_bath_temp = 0.1
 
 function main()
   logger = Memento.config("debug"; fmt="[{level} | {name}]: {msg}")
@@ -36,7 +36,7 @@ function main()
   prng = MersenneTwister(SEED)
 
   const tT = linspace(0.1, 6, n_temperatures)
-  const outdir = "simulations/kawasaki_$(SEED)_$(N)"
+  const outdir = "simulations/$(dynamic)_$(SEED)_$(N)"
   mkpath(outdir)
 
   
@@ -143,7 +143,7 @@ function main()
   plot!(pc; legend=true)
 
   p = plot(pE,pc,layout=l)
-  savefig(p, "$outdir/mesures$N.svg") 
+  savefig(p, "$outdir/mesures.svg") 
 end
 
 function durations_to_swps(durations)
@@ -164,8 +164,6 @@ function H(ω)
 end
 
 
-
-
 struct LocalModel
   ω::Array{Int,2}
 end
@@ -173,8 +171,8 @@ end
 
 struct NonlocalModel
   ω::Array{Int,2}
-  spins_down_coords::Array{ Tuple{Int,Int}, 1 }
-  spins_up_coords::Array{ Tuple{Int,Int}, 1 }
+  spins_down_coords::Array{CartesianIndex{2}, 1}
+  spins_up_coords::Array{CartesianIndex{2}, 1}
 end
 
 struct MetropolisModel
@@ -191,9 +189,9 @@ function init_model(prng; is_local=true)
   for X in spins_down_coords
     ω[X] = -1
   end
-  if dynamic == "local"
+  if dynamic == "k_local"
     LocalModel(ω)
-  elseif dynamic == "nonlocal"
+  elseif dynamic == "k_nonlocal"
     NonlocalModel(ω, spins_down_coords, spins_up_coords)
   elseif dynamic == "metropolis"
     MetropolisModel(ω)
@@ -210,6 +208,10 @@ function random_coords(prng, n)
   CartesianIndex.(collect(zip(random_indexes(prng, n), random_indexes(prng, n))))
 end
 
+function random_up_and_down_spins_indices(prng, model::NonlocalModel, n)
+  zip(rand(prng, 1:length(model.spins_up_coords), n), rand(prng, 1:length(model.spins_down_coords), n))
+end
+
 function delta_neighbors(ω, X)
   s = 0
   for dX in directions
@@ -218,27 +220,54 @@ function delta_neighbors(ω, X)
   s
 end
 
-function mcmove(model::LocalModel, β, prng)
-  kawasaki_local_move(model.ω, β, prng)
-end
 
-function kawasaki_local_move(ω, β, prng)
+function mcmove(m::LocalModel, β, prng) # Kawasaki local move
   const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
   const RANDOM_COORDS = random_coords(prng, N2)
   for X1 in RANDOM_COORDS
-    spin1 = ω[X1]
+    spin1 = m.ω[X1]
     dX = rand(prng, directions)
     X2 = X1 + dX
-    spin2 = ω[X2]
+    spin2 = m.ω[X2]
     if spin1 != spin2
-      dneighbors = delta_neighbors(ω, X2) -
-               delta_neighbors(ω, X1) -
+      dneighbors = delta_neighbors(m.ω, X2) -
+               delta_neighbors(m.ω, X1) -
                2 * spin1
       dE = - 2 * spin1 * dneighbors
       if dE <= 0 || get(boltzmann_quotient, dE, nothing) >= rand(prng)
-        ω[X1] = spin2
-        ω[X2] = spin1
+        m.ω[X1] = spin2
+        m.ω[X2] = spin1
       end
+    end
+  end
+end
+
+function mcmove(model::NonlocalModel, β, prng)
+  const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
+  const RANDOM_UP_AND_DOWN_SPINS_INDICES = random_up_and_down_spins_indices(prng, model, N2)
+  for (i_up, i_down) in RANDOM_UP_AND_DOWN_SPINS_INDICES
+    # Coordinates on the graph
+    Xd, Xu = model.spins_down_coords[i_down], model.spins_up_coords[i_up]
+    dneighbors = delta_neighbors(model.ω, Xu)
+          - delta_neighbors(model.ω, Xd)
+    dE = 2 * dneighbors
+    if dE <= 0 || get(boltzmann_quotient, dE, nothing) >= rand(prng)
+      model.spins_down_coords[i_down] = Xu
+      model.spins_up_coords[i_up] = Xd
+      model.ω[Xd] = +1
+      model.ω[Xu] = -1
+    end
+  end
+end
+
+function mcmove(model::MetropolisModel, β, prng)
+  const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
+  const RANDOM_COORDS = random_coords(prng, N2)
+  for X in RANDOM_COORDS
+    spin = model.ω[X]
+    dE = 2 * spin * delta_neighbors(model.ω, X)
+    if dE <= 0 || get(boltzmann_quotient, dE, nothing) > rand(prng)
+      model.ω[X] = -spin
     end
   end
 end
