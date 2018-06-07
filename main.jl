@@ -25,7 +25,8 @@ const mc_steps = 10^4
 const plot_every = 10^3
 
 const heat_bath_time = 10^5
-const heat_bath_temp = 0.1
+const heat_bath_temp1 = 1.2
+const heat_bath_temp2 = 0.1
 
 function main()
   logger = Memento.config("debug"; fmt="[{level} | {name}]: {msg}")
@@ -37,6 +38,7 @@ function main()
 
   const tT = linspace(0.1, 6, n_temperatures)
   const outdir = "simulations/$(dynamic)_$(SEED)_$(N)"
+  info(logger, "Making output directory: $outdir")
   mkpath(outdir)
 
   
@@ -53,12 +55,22 @@ function main()
   #First heat bath
   info(logger, "Beginning heat bath")
   hbath = now()
-  β_hb = 1 / (k * heat_bath_temp)
+  β_hb1 = 1 / (k * heat_bath_temp1)
   for i in 1:heat_bath_time
-    mcmove(model, β_hb, prng)
+    mcmove(model, β_hb1, prng)
   end
+  p = make_heatmap(model.ω)
+  plot!(p, title="After first heatbath")
+  savefig(p, "$outdir/heatbath1.svg")
+  β_hb2 = 1 / (k * heat_bath_temp2)
+  for i in 1:heat_bath_time
+    mcmove(model, β_hb2, prng)
+  end
+  p = make_heatmap(model.ω)
+  plot!(p, title="After second heatbath")
+  savefig(p, "$outdir/heatbath2.svg")
   dbath = now() - hbath
-  info(logger, "Heat bath done in $dbath ($heat_bath_time sweeps at T=$heat_bath_temp")
+  info(logger, "Heat bath done in $dbath (2 * $heat_bath_time sweeps at T=$heat_bath_temp1 and $heat_bath_temp2")
 
 
   tE = similar(tT)
