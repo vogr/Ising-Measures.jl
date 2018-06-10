@@ -29,7 +29,7 @@ const heat_bath_temp1 = 1.2
 const heat_bath_temp2 = 0.1
 
 function main()
-  logger = Memento.config("debug"; fmt="[{level} | {name}]: {msg}")
+  logger = Memento.config!("debug"; fmt="[{level} | {name}]: {msg}")
 
   info(logger, "Loaded modules in $dmodules")
 
