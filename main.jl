@@ -1,3 +1,9 @@
+# monte_carlo_ising.jl
+# Trace Z, C en fonction de T pour un réseau de taille N
+# en utilisant le méthode MonteCarlo avec la dynamique (au choix)
+#  * Metropolis
+#  * Kawasaki locale
+#  * Kwasaki non locale
 
 tmod = now()
 using Memento
@@ -8,22 +14,26 @@ using DataStructures
 
 dmodules = now() - tmod
 
-const J = 1 # Neighbor interraction
-const k = 1 # Boltzmann's constant
-const dynamic = "k_local"  # in ["k_local", "k_nonlocal", "metropolis"]
-const ρ = 0.4 # spins down ratio
-const N = 50 # Lattice size
+const J = 1 # Facteur d'interaction entre voisins
+const k = 1 # Constante de Boltzmann
+const dynamic = "k_local"  # parmi ["k_local", "k_nonlocal", "metropolis"]
+const ρ = 0.4 # Ratio de spin -1
+const N = 50 # Taille du réseau
 const N2 = N^2
+# Vecteurs des direcions dans le plan
 const directions = CartesianIndex.([(0,1), (0,-1), (1,0), (-1,0)])
 
-
+# "Seed" du générateur de nombres aléatoires
 const SEED = 0x5e6c1f2e
 
+# Relatives aux mesures
 const n_temperatures = 100
 const eq_steps = 5 * 10^3
 const mc_steps = 10^4
 const plot_every = 10^3
 
+# Relatives au premier thermique pour
+# atteindre un premier équilibre
 const heat_bath_time = 10^5
 const heat_bath_temp1 = 1.2
 const heat_bath_temp2 = 0.1
@@ -52,7 +62,7 @@ function main()
   info(logger, "Time for first plot: $dfirstplot")
 
 
-  #First heat bath
+  # Premier équilibrage
   info(logger, "Beginning heat bath")
   hbath = now()
   β_hb1 = 1 / (k * heat_bath_temp1)
@@ -77,6 +87,8 @@ function main()
   tE2 = similar(tT)
   tc = similar(tT)
 
+  # Pour chaque température, on s'approche de l'équilibre par eq_steps
+  # balayages, puis on effectue les mesures sur mc_steps balayages
   h0 = now()
   for (i_T,T) in enumerate(tT)
     info(logger, "Starting T=$T")
@@ -88,6 +100,7 @@ function main()
     totE2 = 0
     t = 0
 
+    # File pour mesurer la durée des balayages.
     qsize = 10
     durations = Queue(Int)
 
@@ -95,8 +108,6 @@ function main()
     plot!(p, title="T=$T, t=$t (eq.)")
     savefig(p, "$subdir/image$(dec(t, 9)).svg")
 
-    # Reach a first equilibrium with eq_steps step then compute energy
-    # on the next mc_steps configurations.
     h1 = now()
     for i in 1:(eq_steps + mc_steps)
       mcmove(model, β, prng)
@@ -164,6 +175,7 @@ function durations_to_swps(durations)
 	sw_per_s
 end
 
+# Energie de la configuration ω
 function H(ω)
   E = 0
   for I in CartesianRange(CartesianIndex(2,2), CartesianIndex(N-1,N-1))
@@ -176,10 +188,11 @@ function H(ω)
 end
 
 
+# Définition de l'objet Model: le type contient la donnée
+# de la dynamique choisie.
 struct LocalModel
   ω::Array{Int,2}
 end
-
 
 struct NonlocalModel
   ω::Array{Int,2}
@@ -210,9 +223,13 @@ function init_model(prng; is_local=true)
   end
 end
 
+
+# Fonctions permettant de générer un grand nombre de tirages
+# aléatoires de coordonés sur le réseau ou de d'indice de spins voisins
+# opposés
 function random_indexes(prng, n)
-  # index in only one dimension
-  # n: number of random indexes
+  # n indices aléatoires (les coordonées sont
+  # des couples d'indices)
   rand(prng, 3:(N - 2), n)
 end
 
@@ -224,6 +241,7 @@ function random_up_and_down_spins_indices(prng, model::NonlocalModel, n)
   zip(rand(prng, 1:length(model.spins_up_coords), n), rand(prng, 1:length(model.spins_down_coords), n))
 end
 
+# Somme des spins voisins de X
 function delta_neighbors(ω, X)
   s = 0
   for dX in directions
@@ -232,8 +250,8 @@ function delta_neighbors(ω, X)
   s
 end
 
-
-function mcmove(m::LocalModel, β, prng) # Kawasaki local move
+# Balayage Kawasaki
+function mcmove(m::LocalModel, β, prng)
   const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
   const RANDOM_COORDS = random_coords(prng, N2)
   for X1 in RANDOM_COORDS
@@ -254,6 +272,7 @@ function mcmove(m::LocalModel, β, prng) # Kawasaki local move
   end
 end
 
+# Balayage Kawasaki non local
 function mcmove(model::NonlocalModel, β, prng)
   const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
   const RANDOM_UP_AND_DOWN_SPINS_INDICES = random_up_and_down_spins_indices(prng, model, N2)
@@ -272,6 +291,7 @@ function mcmove(model::NonlocalModel, β, prng)
   end
 end
 
+# Balayage Metropolis
 function mcmove(model::MetropolisModel, β, prng)
   const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
   const RANDOM_COORDS = random_coords(prng, N2)
@@ -284,6 +304,8 @@ function mcmove(model::MetropolisModel, β, prng)
   end
 end
 
+# Crée l'image associée à une configuration et 
+# renvoie un objet de type Plot.
 function make_heatmap(ω)
   Plots.heatmap(ω,
       color = :viridis,
