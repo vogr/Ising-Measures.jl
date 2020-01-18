@@ -1,3 +1,5 @@
+module IsingMeasures
+
 # monte_carlo_ising.jl
 # Trace Z, C en fonction de T pour un réseau de taille N
 # en utilisant le méthode MonteCarlo avec la dynamique (au choix)
@@ -5,7 +7,10 @@
 #  * Kawasaki locale
 #  * Kwasaki non locale
 
-tmod = now()
+using Dates
+using Random
+
+tmod = Dates.now()
 using Memento
 using Plots
 Plots.gr()
@@ -46,8 +51,8 @@ function main()
   info(logger, "Seed: $SEED")
   prng = MersenneTwister(SEED)
 
-  const tT = linspace(0.1, 6, n_temperatures)
-  const outdir = "simulations/$(dynamic)_$(SEED)_$(N)"
+  tT = range(0.1, stop=6, length=n_temperatures)
+  outdir = "simulations/$(dynamic)_$(SEED)_$(N)"
   info(logger, "Making output directory: $outdir")
   mkpath(outdir)
 
@@ -102,11 +107,11 @@ function main()
 
     # File pour mesurer la durée des balayages.
     qsize = 10
-    durations = Queue(Int)
+    durations = Queue{Int}()
 
     p = make_heatmap(model.ω)
     plot!(p, title="T=$T, t=$t (eq.)")
-    savefig(p, "$subdir/image$(dec(t, 9)).svg")
+    savefig(p, "$subdir/image$(t).svg")
 
     h1 = now()
     for i in 1:(eq_steps + mc_steps)
@@ -134,7 +139,7 @@ function main()
         else
           plot!(p, title="T=$T, t=$t (eq.)")
         end
-        savefig(p, "$subdir/image$(dec(t, 9)).svg")
+        savefig(p, "$subdir/image$(t).svg")
         dplot = now() - hplot
 
         total_time = Dates.canonicalize(Dates.CompoundPeriod(now() - h0))
@@ -171,14 +176,14 @@ end
 
 function durations_to_swps(durations)
   sw_per_ms = (plot_every * length(durations)) / sum(durations)
-  sw_per_s = round(sw_per_ms * 1000, 4)
+  sw_per_s = round(sw_per_ms * 1000, digits=4)
 	sw_per_s
 end
 
 # Energie de la configuration ω
 function H(ω)
   E = 0
-  for I in CartesianRange(CartesianIndex(2,2), CartesianIndex(N-1,N-1))
+  for I in CartesianIndices((2:N-1, 2:N-1))
     s = ω[I]
     for d in directions
       E += - J * s * ω[I + d]
@@ -205,7 +210,7 @@ struct MetropolisModel
 end
 
 function init_model(prng; is_local=true)
-  mutable_sites_coordinates = [CartesianIndex(i,j) for i in 3:(N-2) for j in 3:(N-2)]
+  mutable_sites_coordinates = CartesianIndices((3:(N-2), 3:(N-2)))
   distrib = shuffle(prng, mutable_sites_coordinates)
   ω = ones(Int, (N, N))
   nb_spins_down = convert(Int, round(length(mutable_sites_coordinates) * ρ))
@@ -252,8 +257,8 @@ end
 
 # Balayage Kawasaki
 function mcmove(m::LocalModel, β, prng)
-  const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
-  const RANDOM_COORDS = random_coords(prng, N2)
+  boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
+  RANDOM_COORDS = random_coords(prng, N2)
   for X1 in RANDOM_COORDS
     spin1 = m.ω[X1]
     dX = rand(prng, directions)
@@ -274,8 +279,8 @@ end
 
 # Balayage Kawasaki non local
 function mcmove(model::NonlocalModel, β, prng)
-  const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
-  const RANDOM_UP_AND_DOWN_SPINS_INDICES = random_up_and_down_spins_indices(prng, model, N2)
+  boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
+  RANDOM_UP_AND_DOWN_SPINS_INDICES = random_up_and_down_spins_indices(prng, model, N2)
   for (i_up, i_down) in RANDOM_UP_AND_DOWN_SPINS_INDICES
     # Coordinates on the graph
     Xd, Xu = model.spins_down_coords[i_down], model.spins_up_coords[i_up]
@@ -293,8 +298,8 @@ end
 
 # Balayage Metropolis
 function mcmove(model::MetropolisModel, β, prng)
-  const boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
-  const RANDOM_COORDS = random_coords(prng, N2)
+  boltzmann_quotient = Dict([(i, exp(-i * β)) for i in -20:20])
+  RANDOM_COORDS = random_coords(prng, N2)
   for X in RANDOM_COORDS
     spin = model.ω[X]
     dE = 2 * spin * delta_neighbors(model.ω, X)
@@ -317,3 +322,5 @@ function make_heatmap(ω)
 end
 
 main()
+
+end # module
